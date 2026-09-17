@@ -29,7 +29,7 @@ spec:
       containers:
         - name: sns-app
           image: ghcr.io/sanserif28/sns-app:d6f1e13
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:
