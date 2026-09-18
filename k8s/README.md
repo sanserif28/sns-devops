@@ -203,11 +203,14 @@ helm repo update
 
 helm install prometheus prometheus-community/kube-prometheus-stack --version 88.3.0 \
   -n monitoring --create-namespace \
-  -f k8s/monitoring/kube-prometheus-values.yaml
+  -f k8s/monitoring/kube-prometheus-values.yaml \
+  -f k8s/monitoring/kube-prometheus-values-full.yaml
 
 kubectl apply -f k8s/monitoring/servicemonitor.yaml
-kubectl apply -f k8s/monitoring/alertrules.yaml
 kubectl apply -f k8s/gateway/monitoring.yaml
+
+# 경보 규칙은 08강에서 적용합니다.
+kubectl apply -f k8s/monitoring/alertrules.yaml
 ```
 
 full 은 마지막 `-f` 뒤에 `-f k8s/monitoring/kube-prometheus-values-full.yaml` 을 추가합니다.
