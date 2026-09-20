@@ -3,6 +3,13 @@
 Kind 클러스터 설정, Kubernetes 매니페스트, Helm values를 관리합니다.
 학습자 기준으로 "복붙 가능한 실행 순서 + 검증 포인트"를 먼저 제공합니다.
 
+이 문서는 전체 강의의 최종 안내이며, `part-2-kind-deployment`부터 마지막 `part-*` 브랜치까지 같은 내용을 사용합니다.
+`main`에는 기본 안내와 실행 스크립트가 먼저 제공되어 있고, 이 문서는 02강부터 포함돼요. 아래 설정 파일은 해당 단원에서 작성한 뒤 명령을 실행합니다.
+완료본을 참고할 때도 현재 단원까지 준비된 파일과 환경에 맞는 명령만 실행하세요.
+
+명령은 `sns-devops` 루트 폴더 기준입니다. 단원 폴더에서 실행하는 스크립트 사용법은 [scripts/README.md](../scripts/README.md)를 참고해요.
+
+
 ## 1) 사전 준비
 
 macOS는 [Homebrew](https://brew.sh/ko/)를 먼저 설치한 뒤 터미널에서, Windows는 PowerShell에서 아래 명령을 실행하세요.
@@ -88,12 +95,11 @@ k8s/
 │   ├── argocd-values.yaml         # ArgoCD Helm values
 │   └── application.yaml           # ArgoCD Application CRD
 ├── monitoring/
-│   ├── alertrules.yaml            # PrometheusRule (에러율, 레이턴시, 다운)
 │   ├── alertmanager-values.yaml   # AlertManager Slack 연동
 │   ├── kube-prometheus-values.yaml       # lite 기본
 │   ├── kube-prometheus-values-full.yaml  # full
 │   ├── loki-values.yaml           # Loki Helm values (공통)
-│   ├── otel-collector-values.yaml # OTel Collector Helm values (공통)
+│   ├── otel-collector-values.yaml # 06강 로그 파일 수집, 07강부터 트레이스 추가
 │   ├── tempo-values.yaml          # lite 기본
 │   ├── tempo-values-full.yaml     # full
 │   └── servicemonitor.yaml        # sns-app ServiceMonitor
@@ -102,6 +108,7 @@ k8s/
     ├── postgres.yaml
     ├── redis.yaml
     ├── rustfs.yaml
+    ├── recommend.yaml            # 추천 서비스 (07강)
     └── app.yaml
 ```
 
@@ -206,13 +213,28 @@ helm install prometheus prometheus-community/kube-prometheus-stack --version 88.
   -f k8s/monitoring/kube-prometheus-values.yaml
 
 kubectl apply -f k8s/monitoring/servicemonitor.yaml
-kubectl apply -f k8s/monitoring/alertrules.yaml
 kubectl apply -f k8s/gateway/monitoring.yaml
+
+# 경보 규칙은 08강에서 적용합니다.
+kubectl apply -f k8s/monitoring/alertrules.yaml
 ```
 
 full 은 마지막 `-f` 뒤에 `-f k8s/monitoring/kube-prometheus-values-full.yaml` 을 추가합니다.
 
-### 4-5. Loki + OTel Collector + Tempo (06~07강)
+HTTPRoute 는 대상 Service 를 만드는 강의에서 각각 추가합니다. 05강은 Grafana 와
+Prometheus 두 개이고, Loki 와 Tempo 는 06~07강에서 붙입니다.
+
+```bash
+kubectl get httproute -n monitoring
+```
+
+`Accepted` 와 `ResolvedRefs` 가 모두 True 여야 합니다.
+
+### 4-5. Loki + OTel Collector (06강)
+
+06강에서는 sns-app의 JSON 콘솔 로그를 노드 파일에서 읽어 Loki로 보냅니다.
+앱은 로그 출력, 노드별 OTel Collector는 수집과 전송을 담당해요.
+05강의 Grafana를 그대로 사용하고 Loki 데이터소스를 추가합니다.
 
 ```bash
 helm repo add grafana https://grafana.github.io/helm-charts
@@ -225,17 +247,44 @@ helm install loki grafana/loki --version 7.3.0 -n monitoring \
 helm install otel-collector open-telemetry/opentelemetry-collector --version 0.169.0 \
   -n monitoring -f k8s/monitoring/otel-collector-values.yaml
 
+kubectl apply -f k8s/gateway/loki.yaml
+```
+
+### 4-6. Tempo + OTel Collector 확장 (07강)
+
+먼저 Go 추천 서비스를 로컬에서 빌드하고 Kind에 배포합니다. 별도 이미지 레지스트리는 필요 없어요.
+
+```bash
+docker build -t sns-recommend:latest apps/recommend
+kind load docker-image sns-recommend:latest --name sns-cluster
+kubectl apply -f k8s/sns-app/app.yaml
+kubectl apply -f k8s/sns-app/recommend.yaml
+kubectl rollout status deployment/sns-recommend -n sns --timeout=120s
+```
+
+07강에서는 Tempo를 설치하고, 06강에서 설치한 Collector에 OTLP 트레이스 수신을 추가합니다.
+앱의 트레이스는 OTLP로 보내고, 로그는 계속 파일에서 수집해요.
+`part-7-traces` 브랜치의 values 파일로 기존 Collector를 갱신하면 로그 수집을 유지하면서
+트레이스를 Tempo로 보낼 수 있어요.
+
+```bash
 helm install tempo grafana/tempo --version 1.24.4 -n monitoring \
   -f k8s/monitoring/tempo-values.yaml
+```
 
-kubectl apply -f k8s/gateway/loki.yaml
+Tempo를 full로 진행하면 위 설치 명령에 `-f k8s/monitoring/tempo-values-full.yaml`을
+추가합니다. metrics-generator가 켜져 트레이스 기반 메트릭을 추가로 생성해요.
+
+```bash
+helm upgrade otel-collector open-telemetry/opentelemetry-collector --version 0.169.0 \
+  -n monitoring -f k8s/monitoring/otel-collector-values.yaml
+
 kubectl apply -f k8s/gateway/tempo.yaml
 ```
 
-Tempo 를 full 로 진행하면 마지막 `-f` 뒤에 `-f k8s/monitoring/tempo-values-full.yaml` 을
-추가합니다. metrics-generator 가 켜지고 Grafana Explore Traces 를 쓸 수 있어요.
+### 4-7. AlertManager Slack 연동 (08강)
 
-### 4-6. AlertManager Slack 연동 (08강)
+경보 규칙은 08강에서 추가하고 적용합니다. 05강에서는 경보 규칙 적용을 실행하지 않으며, 아래 Slack 연동도 08강에서 진행해요.
 
 `slack-webhook` secret 을 만든 뒤 values 를 적용하세요.
 
@@ -282,7 +331,7 @@ helm upgrade prometheus prometheus-community/kube-prometheus-stack --version 88.
   - `k8s/monitoring/servicemonitor.yaml` 적용 여부 확인
   - Helm 설치 시 `-f k8s/monitoring/kube-prometheus-values.yaml` 누락 여부 확인
 - 로그가 중복 수집됨
-  - `k8s/monitoring/otel-collector-values.yaml`의 file_log `exclude` 확인
+  - 앱에 OTLP 로그 appender가 남아 있지 않은지 확인해요. 로그는 파일 수집 한 경로만 사용합니다.
 
 ## 8) 학습용 vs 실무용
 
