@@ -28,7 +28,7 @@ spec:
     spec:
       containers:
         - name: sns-app
-          image: ghcr.io/sanserif28/sns-app:45c6fe4
+          image: ghcr.io/sanserif28/sns-app:13b3b55
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -64,6 +64,8 @@ spec:
                 secretKeyRef:
                   name: sns-secret
                   key: rustfs-secret-key
+            - name: RECOMMEND_BASE_URL
+              value: http://sns-recommend.sns.svc.cluster.local:8080
             - name: NODE_IP
               valueFrom:
                 fieldRef:
