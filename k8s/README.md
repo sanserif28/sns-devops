@@ -267,7 +267,8 @@ kubectl rollout status deployment/sns-recommend -n sns --timeout=120s
 
 ```bash
 helm install tempo grafana/tempo --version 1.24.4 -n monitoring \
-  -f k8s/monitoring/tempo-values.yaml
+  -f k8s/monitoring/tempo-values.yaml \
+  -f k8s/monitoring/tempo-values-full.yaml
 ```
 
 Tempo를 full로 진행하면 위 설치 명령에 `-f k8s/monitoring/tempo-values-full.yaml`을
